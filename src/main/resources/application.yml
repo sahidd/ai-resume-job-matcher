@@ -1,0 +1,86 @@
+spring:
+  application:
+    name: ai-resume-job-matcher
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/matcher}
+    username: ${SPRING_DATASOURCE_USERNAME:matcher}
+    password: ${SPRING_DATASOURCE_PASSWORD:matcher}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  flyway:
+    enabled: true
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+  cache:
+    type: redis
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+  jackson:
+    serialization:
+      write-dates-as-timestamps: false
+  ai:
+    model:
+      chat: ${SPRING_AI_MODEL_CHAT:none}
+      embedding: ${SPRING_AI_MODEL_EMBEDDING:none}
+      image: none
+      moderation: none
+      audio:
+        speech: none
+        transcription: none
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      base-url: ${OPENAI_BASE_URL:https://api.openai.com}
+      chat:
+        options:
+          model: ${OPENAI_MODEL:gpt-4o-mini}
+      embedding:
+        options:
+          model: ${OPENAI_EMBEDDING_MODEL:text-embedding-3-small}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when_authorized
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: ${MANAGEMENT_OTLP_TRACING_ENDPOINT:http://localhost:4318/v1/traces}
+
+logging:
+  structured:
+    format:
+      console: logstash
+
+info:
+  app:
+    name: ai-resume-job-matcher
+    description: Resume and job matching with semantic search
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:dev-only-jwt-secret-change-me-please-32b}
+    ttl-hours: 12
+  rate-limit:
+    capacity: ${APP_RATE_LIMIT_CAPACITY:30}
+  embedding:
+    dimensions: ${APP_EMBEDDING_DIMENSIONS:128}
