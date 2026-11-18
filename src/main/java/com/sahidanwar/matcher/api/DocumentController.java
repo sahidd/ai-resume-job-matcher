@@ -15,6 +15,8 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -53,8 +55,23 @@ public class DocumentController {
         // Persist the pending row before the async worker starts, so the worker can see it.
         StoredDocument saved = documentService.createPending(
                 CurrentUser.name(), kind, Filenames.sanitize(file.getOriginalFilename()));
-        processor.process(saved.getId(), bytes);
+        // The worker reads the row in another thread. Start it only after this transaction
+        // commits, otherwise it can miss the insert and leave the document PENDING.
+        runAfterCommit(() -> processor.process(saved.getId(), bytes));
         return ResponseEntity.status(HttpStatus.CREATED).body(DocumentResponse.from(saved));
+    }
+
+    private static void runAfterCommit(Runnable task) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    task.run();
+                }
+            });
+            return;
+        }
+        task.run();
     }
 
     private static byte[] read(MultipartFile file) {

@@ -40,8 +40,9 @@ public class DocumentProcessor {
     @Async
     public void process(UUID id, byte[] content) {
         try {
-            StoredDocument pending = documents.findById(id).orElse(null);
-            if (pending == null || pending.getStatus() != DocumentStatus.PENDING) {
+            StoredDocument pending = awaitPending(id);
+            if (pending == null) {
+                log.error("Document {} was not pending when indexing started", id);
                 return;
             }
             String text = parser.parse(content, pending.getFilename());
@@ -52,7 +53,9 @@ public class DocumentProcessor {
             List<String> chunks = chunker.chunk(text);
             List<Document> indexed = new ArrayList<>();
             for (int i = 0; i < chunks.size(); i++) {
-                indexed.add(new Document(id + ":" + i, chunks.get(i), Map.of(
+                // PgVectorStore's default id column is uuid. A composite id such as
+                // "{documentId}:{chunk}" fails UUID parsing and the document never becomes READY.
+                indexed.add(new Document(UUID.randomUUID().toString(), chunks.get(i), Map.of(
                         "documentId", id.toString(),
                         "kind", pending.getKind().name(),
                         "owner", pending.getOwnerName(),
@@ -65,6 +68,25 @@ public class DocumentProcessor {
             log.warn("Document {} failed processing: {}", id, exception.toString());
             markFailed(id, exception.getMessage());
         }
+    }
+
+    private StoredDocument awaitPending(UUID id) {
+        for (int attempt = 0; attempt < 20; attempt++) {
+            StoredDocument document = documents.findById(id).orElse(null);
+            if (document != null && document.getStatus() == DocumentStatus.PENDING) {
+                return document;
+            }
+            if (document != null) {
+                return null;
+            }
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return null;
+            }
+        }
+        return null;
     }
 
     private void markReady(UUID id, String text) {
